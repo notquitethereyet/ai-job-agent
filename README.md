@@ -1,15 +1,20 @@
 # JobTrackAI - Job Application Tracking Agent
 
-An AI-powered agent that processes user messages and job links, understands their intent, and updates a central job application tracking database.
+Spreadsheets kept ghosting my job applications, so I shipped a hype man with good boundaries. JobTrackAI tracks your apps, talks like a friend, and refuses sketchy requests — all without making you wrangle 16 columns of chaos.
 
-## 🚀 Features
+## 🚀 Features (no fluff)
 
-- **Smart Link Intake**: Detects links and auto-extracts title/company when present, infers status = `applied` if the user says "applied" or only shares a link. Asks only for missing required fields.
-- **Intent Recognition**: Understands new job applications vs. status updates
-- **AI-Powered Processing**: Uses OpenAI GPT-4o for natural language understanding
-- **Centralized Tracking**: Stores all job applications in Supabase database
-- **Ambiguity Resolution**: Prompts for clarification when multiple matches exist
-- **Robust Error Handling**: Comprehensive logging and fallback mechanisms
+- **Drop a link, walk away**: Auto-snags title/company; defaults status to `applied` when you just share a link or say “I applied”. Only asks for what’s actually missing.
+- **Plain English updates**: “2nd one rejected” → picks the right job. Multi-match? You get a short, numbered list — no internal IDs in your face.
+- **Talks like a friend**: LLM-crafted tone — upbeat for good news, compassionate for rejections, and short/clear for everything else.
+- **Refuses politely**: Small talk gets a gentle redirect; sketchy asks (secrets/internal IDs) get a kind but firm no.
+- **Understands context**: Merges partial info across messages and auto-creates when title + company are known.
+- **Supabase-backed**: It’s all in Postgres so you can actually query your history.
+
+### Why you might care
+- Fewer “what was that job again?” moments
+- More “okay king/queen, keep going” energy
+- Zero “oops I leaked my API key” energy
 
 ### Behavior & Tone
 - LLM-crafted responses with adapted tone:
@@ -27,9 +32,9 @@ An AI-powered agent that processes user messages and job links, understands thei
 - **Uvicorn** - ASGI server for production deployment
 
 ### AI & LLM
-- **OpenAI GPT-4o-mini** - Primary model for cost/speed balance
-- **OpenAI GPT-4o** - Alternative for complex reasoning tasks
-- **OpenAI Agents** - For intent classification and entity recognition
+- **OpenAI GPT-4o-mini** - Primary model (fast + affordable)
+- **OpenAI GPT-4o** - For heavier reasoning when needed
+- LLM drives: intent/entity parsing, tone, small-talk redirects, safety refusals
 
 ### Database
 - **Supabase** - PostgreSQL database with REST API
@@ -149,7 +154,7 @@ curl -X PATCH "http://localhost:8000/jobs/{job_id}" \
      }'
 ```
 
-## 🗄️ Database Schema
+## 🗄️ Database Schema (so your future self can query stuff)
 
 The application uses a single `jobs` table with the following structure:
 
@@ -191,7 +196,7 @@ export LOG_LEVEL=DEBUG
 export VERBOSE_LOGGING=true
 ```
 
-### Project Structure
+### Project Structure (lightweight on purpose)
 
 ```
  ai-job-agent/
@@ -221,7 +226,7 @@ docker build -t jobtrackai .
 docker run -p 8000:8000 --env-file .env jobtrackai
 ```
 
-### Production Considerations
+### Production Considerations (when you stop running it on your laptop)
 
 - Use production ASGI server (Gunicorn + Uvicorn)
 - Set up reverse proxy (Nginx)
