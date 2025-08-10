@@ -17,10 +17,7 @@ Based on the PRD, this project uses the following technology stack:
 - **Supabase** - PostgreSQL database with REST API
 - **PostgreSQL** - Primary database (managed by Supabase)
 
-### Web Scraping
-- **BeautifulSoup4** - HTML parsing for job page extraction
-- **Requests** - HTTP client for fetching job pages
-- **Selenium** - Fallback for JavaScript-heavy pages
+
 
 ## Recommended Dependency Versions
 
@@ -31,9 +28,6 @@ fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 openai>=1.3.0
 supabase>=2.0.0
-beautifulsoup4>=4.12.2
-requests>=2.31.0
-selenium>=4.15.0
 pydantic>=2.5.0
 python-multipart>=0.0.6
 ```

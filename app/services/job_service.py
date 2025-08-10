@@ -5,7 +5,7 @@ Handles job-related database operations and business logic
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from ..models.job import Job, JobCreate, JobUpdate, JobStatus
 
@@ -24,7 +24,7 @@ class JobService:
         """
         try:
             job_id = str(uuid.uuid4())
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             job = Job(
                 id=job_id,
@@ -91,7 +91,7 @@ class JobService:
             if job_update.status is not None:
                 job.status = job_update.status
             
-            job.last_updated = datetime.utcnow()
+            job.last_updated = datetime.now(timezone.utc)
             
             logger.info(f"Updated job {job_id}: {job.job_title}")
             return job
@@ -177,7 +177,7 @@ class JobService:
                 stats["by_company"][company] = stats["by_company"].get(company, 0) + 1
                 
                 # Count recent applications (last 30 days)
-                days_ago = (datetime.utcnow() - job.date_added).days
+                days_ago = (datetime.now(timezone.utc) - job.date_added).days
                 if days_ago <= 30:
                     stats["recent_applications"] += 1
             

@@ -1,0 +1,32 @@
+# Allow editing of environment example files
+!.env.example
+!env.example
+
+# Allow editing of configuration files
+!*.toml
+!*.yaml
+!*.yml
+!*.json
+
+# Allow editing of documentation
+!*.md
+!*.rst
+
+# Allow editing of source code
+!*.py
+!*.js
+!*.ts
+!*.jsx
+!*.tsx
+!*.html
+!*.css
+!*.scss
+
+# Allow editing of test files
+!test_*.py
+!*_test.py
+!tests/
+
+# Allow editing of rules and config
+!.cursor/rules/
+!.cursor/

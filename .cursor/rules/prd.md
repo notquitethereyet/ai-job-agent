@@ -4,7 +4,7 @@
 
 **Project Name:** JobTrackAI – Job Application Tracking Agent
 **Primary Language:** Python
-**Core Tech:** OpenAI Agents, Supabase, REST API (FastAPI), Web scraping/manual input fallback
+**Core Tech:** OpenAI Agents, Supabase, REST API (FastAPI)
 
 ---
 
@@ -13,7 +13,7 @@
 JobTrackAI is an AI-powered agent that processes user messages and job links, understands their intent, and updates a central job application tracking database.
 The system must:
 
-1. Parse job postings from links (initially LinkedIn, fallback to manual entry).
+1. Detect job links and prompt the user to provide job details manually.
 2. Store job details (role, company, description, status) in Supabase.
 3. Understand status updates from natural language.
 4. Handle ambiguity by prompting the user for clarification.
@@ -26,7 +26,7 @@ The system must:
 ### **2.1 New Job Link Input**
 
 1. User sends a message with a job link.
-2. Agent fetches job page → Extracts **Role**, **Company**, **Description** (basic).
+2. Agent detects the link and asks the user to provide: **job_title**, **company_name**, and **job_description** (optional).
 3. Agent asks:
 
    > "Is this a new job you applied to?"
@@ -53,9 +53,9 @@ The system must:
 
 ### **2.3 Ambiguity / Error Handling**
 
-* If link parsing fails:
+* If link processing is unclear:
 
-  > "I couldn't fetch details from this link. Could you paste the role and company name?"
+  > "I couldn't process the link. Could you paste the role and company name?"
 * If user message is unclear:
 
   > "Could you confirm if this is a new job application or a status update?"
@@ -69,7 +69,7 @@ The system must:
 * **Intent Classification:** New job vs. status update vs. unclear.
 * **Entity Recognition:** Extract company name, job title, job link.
 * **Context Handling:** Check for multiple matching records before updating.
-* **Basic Web Scraping:** LinkedIn job pages (or manual entry fallback).
+* **Link Detection:** Identify when messages include potential job links.
 
 ---
 
@@ -78,7 +78,6 @@ The system must:
 * **Model:** GPT-4o-mini or GPT-4o (depending on cost/speed trade-off).
 * **Tools:**
 
-  * `fetch_job_details(url)` → Scraper + fallback prompt-based extraction.
   * `update_job_status(job_id, status)` → Supabase API call.
   * `insert_new_job(data)` → Supabase API call.
 * **Memory:** Maintain short-term conversation context per user.
@@ -95,7 +94,7 @@ The system must:
    * `/agent/webhook` (future WhatsApp integration).
 2. **OpenAI Agent** – Runs intent classification, parsing, and database calls.
 3. **Supabase** – PostgreSQL storage + REST API.
-4. **Scraper Service** – Fetches and parses job pages (with fallback).
+
 
 ---
 
@@ -121,7 +120,7 @@ The system must:
 
 * **Types of Errors:**
 
-  * **Scraping Failure:** Log URL + response code.
+  
   * **Supabase API Error:** Log payload + returned error.
   * **LLM Misclassification:** Log input + intent + fallback response.
 * **Logging:** Structured JSON logs with timestamps.
@@ -141,7 +140,7 @@ The system must:
 ## **7. MVP Scope**
 
 ✅ Intent classification (new job vs. status update).
-✅ Job parsing from LinkedIn (basic HTML scraping).
+✅ Manual job detail entry when a link is shared.
 ✅ Supabase integration (insert/update records).
 ✅ Clarification prompts for ambiguity.
 ✅ Robust error handling & logging.

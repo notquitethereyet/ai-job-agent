@@ -4,12 +4,20 @@ An AI-powered agent that processes user messages and job links, understands thei
 
 ## 🚀 Features
 
-- **Smart Job Parsing**: Automatically extracts job details from LinkedIn links
+- **Smart Link Intake**: Detects links and auto-extracts title/company when present, infers status = `applied` if the user says "applied" or only shares a link. Asks only for missing required fields.
 - **Intent Recognition**: Understands new job applications vs. status updates
 - **AI-Powered Processing**: Uses OpenAI GPT-4o for natural language understanding
 - **Centralized Tracking**: Stores all job applications in Supabase database
 - **Ambiguity Resolution**: Prompts for clarification when multiple matches exist
 - **Robust Error Handling**: Comprehensive logging and fallback mechanisms
+
+### Behavior & Tone
+- LLM-crafted responses with adapted tone:
+  - Friendly/cheerful for positive events (new job, interview, offer)
+  - Compassionate for negative outcomes (rejected/withdrawn)
+- Small-talk/off-topic messages receive a brief, kind redirect back to job actions
+- Safety guardrails: kind but firm refusals for requests about secrets/internal data (LLM + keyword detection)
+- Multi-match updates: numbered choices, accept replies like "2nd one rejected" (no internal IDs ever shown)
 
 ## 🏗️ Tech Stack
 
@@ -27,10 +35,7 @@ An AI-powered agent that processes user messages and job links, understands thei
 - **Supabase** - PostgreSQL database with REST API
 - **PostgreSQL** - Primary database (managed by Supabase)
 
-### Web Scraping
-- **BeautifulSoup4** - HTML parsing for job page extraction
-- **Requests** - HTTP client for fetching job pages
-- **Selenium** - Fallback for JavaScript-heavy pages
+
 
 ### Development Tools
 - **uv** - Fast Python package installer and resolver
@@ -49,8 +54,8 @@ An AI-powered agent that processes user messages and job links, understands thei
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd job-watch
+   git clone git@github.com:notquitethereyet/ai-job-agent.git
+   cd ai-job-agent
    ```
 
 2. **Install uv** (if not already installed)
@@ -58,9 +63,9 @@ An AI-powered agent that processes user messages and job links, understands thei
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-3. **Install dependencies**
+3. **Install dependencies (local to this repo)**
    ```bash
-   uv pip install -r requirements.txt
+   uv sync
    ```
 
 4. **Set up environment variables**
@@ -78,12 +83,24 @@ An AI-powered agent that processes user messages and job links, understands thei
 
 ## 🚀 Quick Start
 
-1. **Run the development server**
+1. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your OpenAI API key and Supabase credentials
+   ```
+
+2. **Create Supabase database table**
+   ```bash
+   # Go to Supabase Dashboard → SQL Editor
+   # Run the SQL from database/schema.sql
+   ```
+
+3. **Run the development server**
    ```bash
    uv run uvicorn app.main:app --reload
    ```
 
-3. **Access the API**
+4. **Access the API**
    - API Documentation: http://localhost:8000/docs
    - Alternative docs: http://localhost:8000/redoc
 
@@ -94,8 +111,21 @@ An AI-powered agent that processes user messages and job links, understands thei
 curl -X POST "http://localhost:8000/agent/message" \
      -H "Content-Type: application/json" \
      -d '{
-       "message": "I applied to this job: https://linkedin.com/jobs/view/123456"
+       "message": "I applied to AI Engineer I @ Mintegral. Link: https://www.linkedin.com/jobs/view/4210607143",
+       "user_id": "<uuid>"
      }'
+# Response will auto-create the job when both title and company are present.
+```
+
+### List Jobs
+```bash
+curl -X POST "http://localhost:8000/agent/message" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "message": "show my jobs",
+       "user_id": "<uuid>"
+     }'
+# Returns a concise list of your jobs with status (first 10). Internal IDs are never exposed.
 ```
 
 ### Add New Job
@@ -146,6 +176,7 @@ The application uses a single `jobs` table with the following structure:
 | `SUPABASE_ANON_KEY` | Supabase anonymous key       | Yes      |
 | `LOG_LEVEL`       | Logging level (default: INFO) | No       |
 | `DEBUG`           | Enable debug mode (default: false) | No |
+| `OPENAI_MODEL`    | Override model (default: gpt-4o-mini) | No |
 
 ### Development Settings
 
@@ -160,46 +191,10 @@ export LOG_LEVEL=DEBUG
 export VERBOSE_LOGGING=true
 ```
 
-## 🧪 Testing
-
-Run the test suite:
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=app
-
-# Run specific test file
-uv run pytest tests/test_agent.py
-
-# Run with verbose output
-uv run pytest -v
-```
-
-## 📝 Development
-
-### Code Quality
-
-```bash
-# Format code
-uv run black .
-
-# Sort imports
-uv run isort .
-
-# Lint code
-uv run flake8
-
-# Type checking
-uv run mypy .
-```
-
 ### Project Structure
 
 ```
-job-watch/
+ ai-job-agent/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py              # FastAPI application
@@ -245,7 +240,7 @@ docker run -p 8000:8000 --env-file .env jobtrackai
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Licensed under the "Do whatever you want lil bro" License
 
 ## 🆘 Support
 
@@ -257,13 +252,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### MVP Features (Current)
 - ✅ Intent classification (new job vs. status update)
-- ✅ Job parsing from LinkedIn (basic HTML scraping)
-- ✅ Supabase integration (insert/update records)
-- ✅ Clarification prompts for ambiguity
+- ✅ AI-powered message processing with OpenAI
+- ✅ Full CRUD operations for job management
+- ✅ Supabase integration with PostgreSQL
+- ✅ FastAPI endpoints for all operations
+- ✅ Job statistics and reporting
 - ✅ Robust error handling & logging
+- ✅ Graceful fallback for job link processing
 
 ### Future Enhancements
-- 🔄 WhatsApp integration
+- 🔄 Chat (Discord/WhatsApp) integration
 - 🔄 Resume tailoring for ATS
 - 🔄 Keyword matching between job description and resume
 - 🔄 Multi-user authentication for personal dashboards
@@ -273,3 +271,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Built with ❤️ using FastAPI, OpenAI, and Supabase**
+
+## 🧪 Manual Testing
+
+Use the curated prompts in `TEST_PROMPTS.md` to validate happy paths, small-talk redirects, safety refusals, and edge cases (multi-entity updates, links, slang, etc.).
