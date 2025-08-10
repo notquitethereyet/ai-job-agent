@@ -1,0 +1,196 @@
+# JobTrackAI Tech Stack & Dependencies
+
+## Core Technology Stack
+
+Based on the PRD, this project uses the following technology stack:
+
+### Backend Framework
+- **FastAPI** - Modern, fast web framework for building APIs
+- **Python 3.11+** - Recommended for optimal performance and feature support
+
+### AI & LLM
+- **OpenAI GPT-4o-mini** - Primary model for cost/speed balance
+- **OpenAI GPT-4o** - Alternative for complex reasoning tasks
+- **OpenAI Agents** - For intent classification and entity recognition
+
+### Database & Backend
+- **Supabase** - PostgreSQL database with REST API
+- **PostgreSQL** - Primary database (managed by Supabase)
+
+### Web Scraping
+- **BeautifulSoup4** - HTML parsing for job page extraction
+- **Requests** - HTTP client for fetching job pages
+- **Selenium** - Fallback for JavaScript-heavy pages
+
+## Recommended Dependency Versions
+
+### Core Dependencies
+```toml
+# requirements.txt
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+openai>=1.3.0
+supabase>=2.0.0
+beautifulsoup4>=4.12.2
+requests>=2.31.0
+selenium>=4.15.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
+```
+
+### Development Dependencies
+```toml
+# requirements-dev.txt
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.1
+```
+
+## Version Selection Rationale
+
+### FastAPI 0.104.1+
+- **Why**: Latest stable version with Pydantic v2 support
+- **Best Practice**: Use Pydantic v2 for better performance and validation
+- **Note**: Avoid versions < 0.100.0 due to breaking changes
+
+### OpenAI 1.3.0+
+- **Why**: Latest API with improved error handling and streaming
+- **Best Practice**: Use async methods for better performance
+- **Note**: Requires OpenAI API key in environment variables
+
+### Supabase 2.0.0+
+- **Why**: Major rewrite with better async support and type safety
+- **Best Practice**: Use environment variables for credentials
+- **Note**: Breaking changes from v1.x - requires migration
+
+### Python 3.11+
+- **Why**: 10-60% performance improvement over 3.10
+- **Best Practice**: Use type hints and async/await patterns
+- **Note**: Avoid 3.12 for now due to some package compatibility issues
+
+## Best Practices
+
+### Environment Management
+```bash
+# Use uv for dependency management
+uv pip install -r requirements.txt
+uv run python app/main.py
+
+# Environment variables
+export OPENAI_API_KEY="your-key"
+export SUPABASE_URL="your-url"
+export SUPABASE_ANON_KEY="your-key"
+```
+
+### Async Patterns
+```python
+# Use async/await for I/O operations
+async def fetch_job_details(url: str) -> JobDetails:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return parse_job_page(response.text)
+
+# FastAPI endpoints should be async
+@app.post("/agent/message")
+async def process_message(message: UserMessage):
+    return await agent.process(message)
+```
+
+### Error Handling
+```python
+# Use proper exception handling
+try:
+    job_details = await fetch_job_details(url)
+except httpx.RequestError as e:
+    logger.error(f"Failed to fetch {url}: {e}")
+    return None
+except Exception as e:
+    logger.error(f"Unexpected error: {e}")
+    raise
+```
+
+### Type Safety
+```python
+# Use Pydantic models for validation
+from pydantic import BaseModel, HttpUrl
+
+class JobDetails(BaseModel):
+    title: str
+    company: str
+    description: str
+    url: HttpUrl
+    status: JobStatus = JobStatus.APPLIED
+```
+
+## Security Considerations
+
+### API Keys
+- Never commit API keys to version control
+- Use environment variables or secure secret management
+- Rotate keys regularly
+
+### Rate Limiting
+- Implement rate limiting for OpenAI API calls
+- Use exponential backoff for failed requests
+- Monitor API usage and costs
+
+### Input Validation
+- Validate all user inputs with Pydantic
+- Sanitize HTML content from web scraping
+- Use parameterized queries for database operations
+
+## Performance Optimization
+
+### Database
+- Use connection pooling for Supabase
+- Implement proper indexing on frequently queried fields
+- Use async database operations
+
+### Caching
+- Cache job details to avoid repeated scraping
+- Implement Redis for session management (future)
+- Use FastAPI's built-in caching decorators
+
+### Async Operations
+- Run web scraping operations concurrently
+- Use background tasks for non-critical operations
+- Implement proper timeout handling
+
+## Monitoring & Logging
+
+### Structured Logging
+```python
+import structlog
+
+logger = structlog.get_logger()
+logger.info("Job processed", job_id=job.id, status=job.status)
+```
+
+### Error Tracking
+- Log all API errors with context
+- Implement health checks for external services
+- Monitor response times and success rates
+
+## Future Considerations
+
+### Scalability
+- Consider using Celery for background job processing
+- Implement Redis for caching and session storage
+- Use database connection pooling
+
+### Testing
+- Implement integration tests with Supabase
+- Mock OpenAI API calls in unit tests
+- Use testcontainers for local development
+
+### Deployment
+- Use Docker for consistent environments
+- Implement health checks and readiness probes
+- Use environment-specific configuration files
+description:
+globs:
+alwaysApply: false
+---
