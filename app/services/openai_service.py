@@ -503,6 +503,38 @@ class OpenAIService:
             logger.error(f"OpenAI API error: {str(e)}")
             return None
 
+    async def generate_friendly_error(self, error_type: str, context: Dict[str, Any] = None) -> str:
+        """Generate a friendly, witty error message with personality."""
+        try:
+            system_prompt = """
+            You are JobTrackAI, a friendly assistant with a touch of humor. The user encountered an error.
+            Generate a friendly, supportive error message with these rules:
+            - Keep it concise (1-2 sentences)
+            - Add a touch of personality and wit (1 emoji max)
+            - Be encouraging and suggest a simple next step
+            - Do NOT expose technical details or internal IDs
+            - Match tone to error severity (light for minor issues, more serious for data problems)
+            """
+            
+            payload = {
+                "error_type": error_type,
+                "context": context or {}
+            }
+            user_msg = "Create a friendly error message for this situation:\n" + json.dumps(payload)
+            response = await self._get_chat_completion(system_prompt=system_prompt, user_message=user_msg)
+            if response:
+                return response
+        except Exception as e:
+            logger.error(f"Error generating friendly error: {e}")
+        
+        # Fallback responses based on error type
+        if error_type == "job_creation_failed":
+            return "I couldn't create the job entry. Let's try again with the job title and company name. ✨"
+        elif error_type == "job_update_failed":
+            return "I couldn't update the job. Let's try again in a moment. 🔄"
+        else:
+            return "Something went wrong. Let's try again differently. 🛠️"
+    
     def _normalize_status(self, status_str: Optional[str], *, original_message: Optional[str] = None) -> Optional[JobStatus]:
         """Map arbitrary status strings (and message hints) to allowed JobStatus values."""
         try:

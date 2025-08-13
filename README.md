@@ -48,6 +48,17 @@ Spreadsheets kept ghosting my job applications, so I shipped a hype man with goo
 - **Black** - Code formatting
 - **MyPy** - Static type checking
 
+## 📚 Technical Documentation
+
+For a comprehensive technical overview of the system architecture, data flow, and integration details, please refer to the [Technical Architecture Documentation](./TECHNICAL_ARCHITECTURE.md). This document provides in-depth information about:
+
+- Complete end-to-end process flow
+- WhatsApp integration via Make.com scenarios
+- FastAPI backend structure and services
+- OpenAI integration for dynamic responses
+- Supabase database schema and connections
+- Deployment architecture
+
 ## 📋 Prerequisites
 
 - Python 3.11 or higher

@@ -349,7 +349,10 @@ class AgentService:
                                         await self.supabase_service.update_conversation_metadata(conversation_id, meta)
                                 except Exception:
                                     pass
-                                response = "What's the new status? Choose one of: applied, interview, offer, rejected, withdrawn."
+                                response = await self.openai_service.generate_friendly_error(
+                                    error_type="status_prompt",
+                                    context={"options": ["applied", "interview", "offer", "rejected", "withdrawn"]}
+                                )
                                 agent_response = AgentResponse(
                                     response=response,
                                     action_taken="clarification_needed",
@@ -437,7 +440,10 @@ class AgentService:
                                 conversation_id=conversation_id,
                             )
                         else:
-                            response = "I couldn't update the job status. Please try again."
+                            response = await self.openai_service.generate_friendly_error(
+                                error_type="job_update_failed",
+                                context={"job_title": job.get("job_title"), "company_name": job.get("company_name")}
+                            )
                             agent_response = AgentResponse(
                                 response=response,
                                 action_taken="error",
@@ -484,7 +490,10 @@ class AgentService:
                 # Special command-like intents: "withdraw all jobs" / "update all ..." should not be treated as search
                 lower_msg = user_message.message.lower()
                 if any(kw in lower_msg for kw in ["withdraw all", "reject all", "update all", "set all to"]):
-                    response = "Bulk updates aren't supported yet. You can say 'withdraw <title> at <company>' or list jobs to pick."
+                    response = await self.openai_service.generate_friendly_error(
+                        error_type="bulk_updates_unsupported",
+                        context={"suggestion": "withdraw <title> at <company> or list jobs to pick"}
+                    )
                     agent_response = AgentResponse(
                         response=response,
                         action_taken="information_provided",
@@ -507,7 +516,10 @@ class AgentService:
                         jobs = await self.supabase_service.get_user_jobs(user_id=str(user_message.user_id), limit=3)
 
                     if not jobs:
-                        response = "You haven't added any job applications yet."
+                        response = await self.openai_service.generate_friendly_error(
+                            error_type="no_jobs_found",
+                            context={"action": "search"}
+                        )
                     else:
                         friendly_jobs = [
                             {
@@ -702,7 +714,10 @@ class AgentService:
                             status_obj = JobStatus.APPLIED
                         jobs_to_update = await self.supabase_service.get_user_jobs(user_id=str(user_message.user_id))
                         if not jobs_to_update:
-                            response = "There are no applications to update right now. Want to add one? ✨"
+                            response = await self.openai_service.generate_friendly_error(
+                                error_type="no_jobs_to_update",
+                                context={"action": "update"}
+                            )
                             agent_response = AgentResponse(
                                 response=response,
                                 action_taken="information_provided",
@@ -748,9 +763,11 @@ class AgentService:
                                 # Clear pending
                                 metadata["pending_new_job"] = None
                                 await self.supabase_service.update_conversation_metadata(conversation_id, metadata)
-                                response = (
-                                    f"Added '{job_data.job_title}' at {job_data.company_name} with status '{job_data.status.value}'." +
-                                    (f"\nLink: {job_data.job_link}" if job_data.job_link else "")
+                                response = await self.openai_service.generate_friendly_job_created(
+                                    job_title=job_data.job_title,
+                                    company_name=job_data.company_name,
+                                    status=job_data.status.value,
+                                    job_link=job_data.job_link
                                 )
                                 agent_response = AgentResponse(
                                     response=response,
@@ -762,7 +779,10 @@ class AgentService:
                                     conversation_id=conversation_id,
                                 )
                             else:
-                                response = "I couldn't create the job entry. Please try again."
+                                response = await self.openai_service.generate_friendly_error(
+                                    error_type="job_creation_failed",
+                                    context={"job_title": pending.get("job_title"), "company_name": pending.get("company_name")}
+                                )
                                 agent_response = AgentResponse(
                                     response=response,
                                     action_taken="error",
@@ -772,7 +792,10 @@ class AgentService:
                                 )
                         except Exception as e:
                             logger.error(f"Failed to create job from pending context: {e}")
-                            response = "I couldn't create the job entry. Please provide the job title and company again."
+                            response = await self.openai_service.generate_friendly_error(
+                                error_type="job_creation_failed",
+                                context={"error": str(e)}
+                            )
                             agent_response = AgentResponse(
                                 response=response,
                                 action_taken="error",
