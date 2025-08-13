@@ -877,13 +877,37 @@ class AgentService:
                     confidence=0.0
                 )
             
+            # Check if it's a LinkedIn job link
+            is_linkedin_job = any('linkedin.com/jobs/view' in url.lower() for url in urls)
+            
             # Attempt structured extraction
             extraction = await self.openai_service.extract_job_details(user_message.message)
+            
+            # For LinkedIn job links, make a more aggressive attempt to get job details
+            if is_linkedin_job:
+                linkedin_url = next((url for url in urls if 'linkedin.com/jobs/view' in url.lower()), None)
+                if linkedin_url and (not extraction.job_title or not extraction.company_name):
+                    # Try to scrape the LinkedIn job page for title and company
+                    logger.info(f"Attempting to fetch details from LinkedIn job URL: {linkedin_url}")
+                    title, company = await self._fetch_linkedin_job_details(linkedin_url)
+                    
+                    if title and not extraction.job_title:
+                        extraction.job_title = title
+                        logger.info(f"Extracted job title from LinkedIn: {title}")
+                    
+                    if company and not extraction.company_name:
+                        extraction.company_name = company
+                        logger.info(f"Extracted company from LinkedIn: {company}")
+            
+            # General fallback for any job link
             if not extraction.job_title:
-                # Fallback: try page title from the first URL
+                # Try page title from the first URL
                 title = await self._fetch_page_title(urls[0])
                 if title:
                     extraction.job_title = title
+                    logger.info(f"Using page title as job title: {title}")
+            
+            # Set default status if not provided
             if not extraction.status:
                 extraction.status = JobStatus.APPLIED
 
@@ -1089,7 +1113,82 @@ class AgentService:
                         return title[:120]
         except Exception:
             return None
-        return None
+            
+    async def _fetch_linkedin_job_details(self, url: str) -> tuple[Optional[str], Optional[str]]:
+        """Extract job title and company name from LinkedIn job URL
+        
+        Returns a tuple of (job_title, company_name)
+        """
+        try:
+            import httpx
+            # Use the same httpx client as _fetch_page_title for consistency
+            async with httpx.AsyncClient(timeout=8.0, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }) as client:
+                r = await client.get(url, follow_redirects=True)
+                if r.status_code >= 200 and r.status_code < 300:
+                    # Try to extract job title and company from the page content
+                    job_title = None
+                    company_name = None
+                    
+                    # First extract the title
+                    title_match = re.search(r"<title[^>]*>([\s\S]*?)</title>", r.text, re.IGNORECASE)
+                    if title_match:
+                        page_title = html_module.unescape(title_match.group(1)).strip()
+                        
+                        # LinkedIn titles often follow patterns like:
+                        # "Job Title at Company | LinkedIn"
+                        # "Job Title at Company: Location | LinkedIn"
+                        if ' at ' in page_title and '|' in page_title:
+                            title_part = page_title.split('|')[0].strip()
+                            parts = title_part.split(' at ', 1)
+                            if len(parts) >= 2:
+                                job_title = parts[0].strip()
+                                # Company might have location after a colon
+                                company_part = parts[1].split(':', 1)[0].strip()
+                                company_name = company_part
+                    
+                    # Try to extract from meta tags which often contain structured data
+                    og_title = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', r.text, re.IGNORECASE)
+                    if og_title and not job_title:
+                        og_title_text = html_module.unescape(og_title.group(1)).strip()
+                        if ' at ' in og_title_text:
+                            parts = og_title_text.split(' at ', 1)
+                            job_title = parts[0].strip()
+                            if len(parts) > 1 and not company_name:
+                                company_name = parts[1].split(':', 1)[0].strip()
+                    
+                    # Try to extract from JSON-LD which LinkedIn often uses
+                    json_ld_match = re.search(r'<script type="application/ld\+json">([\s\S]*?)</script>', r.text, re.IGNORECASE)
+                    if json_ld_match:
+                        try:
+                            json_data = json.loads(json_ld_match.group(1))
+                            if not job_title and 'title' in json_data:
+                                job_title = json_data['title']
+                            if not company_name and 'hiringOrganization' in json_data:
+                                if isinstance(json_data['hiringOrganization'], dict) and 'name' in json_data['hiringOrganization']:
+                                    company_name = json_data['hiringOrganization']['name']
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    # Clean up extracted data
+                    if job_title:
+                        job_title = job_title.replace('\n', ' ').strip()
+                        job_title = re.sub(r'\s+', ' ', job_title)
+                    
+                    if company_name:
+                        company_name = company_name.replace('\n', ' ').strip()
+                        company_name = re.sub(r'\s+', ' ', company_name)
+                        # Remove "LinkedIn" if it's part of the company name erroneously
+                        company_name = re.sub(r'\s*LinkedIn\s*$', '', company_name, flags=re.IGNORECASE)
+                    
+                    logger.info(f"LinkedIn extraction results - Title: {job_title}, Company: {company_name}")
+                    return job_title, company_name
+                    
+        except Exception as e:
+            logger.warning(f"Error fetching LinkedIn job details: {str(e)}")
+        
+        return None, None
 
     def _missing_required_fields(self, extraction: JobExtraction) -> list[str]:
         missing: list[str] = []
