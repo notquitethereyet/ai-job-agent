@@ -4,12 +4,15 @@ Spreadsheets kept ghosting my job applications, so I shipped a hype man with goo
 
 ## 🚀 Features (no fluff)
 
-- **Drop a link, walk away**: Auto-snags title/company; defaults status to `applied` when you just share a link or say “I applied”. Only asks for what’s actually missing.
-- **Plain English updates**: “2nd one rejected” → picks the right job. Multi-match? You get a short, numbered list — no internal IDs in your face.
-- **Talks like a friend**: LLM-crafted tone — upbeat for good news, compassionate for rejections, and short/clear for everything else.
+- **Drop a link, walk away**: Auto-snags title/company; defaults status to `applied` when you just share a link or say "I applied". Uses AI to analyze conversation context for missing fields instead of asking unnecessarily.
+- **Plain English updates**: "2nd one rejected" → picks the right job. Multi-match? You get a short, numbered list — no internal IDs in your face.
+- **Emotionally intelligent**: Detects when you're anxious about interviews, frustrated with the process, or disappointed about rejections — responds with appropriate support and practical advice.
+- **Interview prep on demand**: Feeling nervous? AI automatically provides tailored prep advice for your upcoming interviews, including company research tips and confidence builders.
+- **Smart context awareness**: Analyzes conversation flow to avoid unnecessary clarification questions — understands what you mean without being obtuse.
+- **Talks like a friend**: Personalized tone — upbeat for good news, compassionate for rejections, encouraging for anxiety, and short/clear for everything else.
 - **Refuses politely**: Small talk gets a gentle redirect; sketchy asks (secrets/internal IDs) get a kind but firm no.
-- **Understands context**: Merges partial info across messages and auto-creates when title + company are known.
-- **Supabase-backed**: It’s all in Postgres so you can actually query your history.
+- **Understands context**: Intelligently merges partial info across messages, analyzes conversation history to infer missing fields, and auto-creates when title + company are known.
+- **Supabase-backed**: It's all in Postgres so you can actually query your history.
 
 ### Why you might care
 - Fewer “what was that job again?” moments
@@ -17,9 +20,14 @@ Spreadsheets kept ghosting my job applications, so I shipped a hype man with goo
 - Zero “oops I leaked my API key” energy
 
 ### Behavior & Tone
+- **Emotional Intelligence**: Detects user emotional state (anxious, frustrated, disappointed, excited) and adapts responses accordingly
+- **Interview Support**: Automatically recognizes interview anxiety and provides tailored prep advice, research suggestions, and confidence building
+- **Smart Clarification**: Analyzes context before asking questions — avoids obtuse "which job do you mean?" when it's obvious from conversation
 - LLM-crafted responses with adapted tone:
   - Friendly/cheerful for positive events (new job, interview, offer)
-  - Compassionate for negative outcomes (rejected/withdrawn)
+  - Compassionate for negative outcomes (rejected/withdrawn)  
+  - Encouraging and practical for anxiety/stress
+  - Validating for frustration with process
 - Small-talk/off-topic messages receive a brief, kind redirect back to job actions
 - Safety guardrails: kind but firm refusals for requests about secrets/internal data (LLM + keyword detection)
 - Multi-match updates: numbered choices, accept replies like "2nd one rejected" (no internal IDs ever shown)
@@ -350,6 +358,9 @@ Licensed under the "Do whatever you want lil bro" License
 ### MVP Features (Current)
 - ✅ Intent classification (new job vs. status update)
 - ✅ AI-powered message processing with OpenAI
+- ✅ **Emotional intelligence & interview support**
+- ✅ **Smart context-aware clarification**
+- ✅ **Automatic interview prep advice**
 - ✅ Full CRUD operations for job management
 - ✅ Supabase integration with PostgreSQL
 - ✅ FastAPI endpoints for all operations

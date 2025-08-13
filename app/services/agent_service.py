@@ -5,6 +5,7 @@ Orchestrates AI agent logic and coordinates between services
 
 import logging
 import re
+import json
 import html as html_module
 from typing import Optional
 # from openai_agents import Agent  # Not available, using simpler approach
@@ -128,8 +129,60 @@ class AgentService:
                     )
                 return agent_response
 
-            # Off-topic/small-talk handling: if not job-related, reply kindly and redirect
+            # Enhanced emotional intelligence handling
             is_job_related, jr_conf = await self.openai_service.detect_job_related(user_message.message)
+            
+            # If it's job-related but emotionally charged, handle with empathy first
+            if is_job_related:
+                emotion, emotion_conf = await self.openai_service.detect_emotional_state(user_message.message)
+                
+                # Special handling for interview anxiety and frustration
+                if emotion in ["anxious", "frustrated", "disappointed"] and emotion_conf > 0.7:
+                    # Check if they're talking about a specific job for interview prep
+                    if emotion == "anxious" and any(word in user_message.message.lower() 
+                                                   for word in ["interview", "nervous", "scared", "anxious"]):
+                        # Try to find recent interview-status jobs for prep advice
+                        recent_interviews = await self.supabase_service.search_jobs(
+                            user_id=str(user_message.user_id),
+                            status_filter="interview",
+                            limit=3
+                        )
+                        
+                        if recent_interviews:
+                            job_info = recent_interviews[0]  # Most recent interview
+                            prep_advice = await self.openai_service.generate_interview_prep_response(job_info)
+                            response_text = f"Interview nerves are totally normal! Here's some prep for {job_info['job_title']} at {job_info['company_name']}:\n\n{prep_advice}"
+                        else:
+                            response_text = await self.openai_service.generate_emotional_support_response(user_message.message, emotion)
+                    else:
+                        response_text = await self.openai_service.generate_emotional_support_response(user_message.message, emotion)
+                    
+                    agent_response = AgentResponse(
+                        response=response_text,
+                        action_taken="emotional_support",
+                        intent=IntentType.UNKNOWN,
+                        confidence=max(confidence, emotion_conf, 0.9),
+                        conversation_id=conversation_id,
+                        suggested_actions=["Show jobs", "Interview prep", "Add new job"] if emotion == "anxious" 
+                                       else ["Add new job", "Update status", "Show jobs"],
+                    )
+                    if conversation_id:
+                        await self.supabase_service.add_message(
+                            conversation_id=conversation_id,
+                            user_id=str(user_message.user_id),
+                            role="assistant",
+                            content=agent_response.response,
+                            tool_calls={
+                                "intent": agent_response.intent.value,
+                                "confidence": agent_response.confidence,
+                                "action_taken": agent_response.action_taken,
+                                "job_id": agent_response.job_id,
+                                "emotion_detected": emotion
+                            }
+                        )
+                    return agent_response
+            
+            # Off-topic/small-talk handling: if not job-related, reply kindly and redirect
             if not is_job_related:
                 smalltalk = await self.openai_service.generate_smalltalk_redirect(user_message.message)
                 agent_response = AgentResponse(
@@ -236,9 +289,15 @@ class AgentService:
                         except Exception as e:
                             logger.warning(f"Failed to persist pending_new_job after creation failure: {e}")
 
-                        response = (
-                            "I couldn't create the job entry right now. Please try again in a moment, "
-                            "or confirm and I'll retry."
+                        response = await self.openai_service.generate_dynamic_response(
+                            "job_creation_failed",
+                            {
+                                "job_title": extraction.job_title,
+                                "company_name": extraction.company_name,
+                                "action": "creating job entry"
+                            },
+                            user_message.message,
+                            recent_context
                         )
                         agent_response = AgentResponse(
                             response=response,
@@ -254,8 +313,14 @@ class AgentService:
                 bulk_all = self._is_bulk_all_command(user_message.message)
 
                 if not new_status:
-                    response = (
-                        "What's the new status? Choose one of: applied, interview, offer, rejected, withdrawn."
+                    response = await self.openai_service.generate_dynamic_response(
+                        "status_missing",
+                        {
+                            "available_statuses": ["applied", "interview", "offer", "rejected", "withdrawn"],
+                            "user_intent": "status_update"
+                        },
+                        user_message.message,
+                        recent_context
                     )
                     agent_response = AgentResponse(
                         response=response,
@@ -272,9 +337,14 @@ class AgentService:
                     if bulk_all:
                         all_jobs = await self.supabase_service.get_user_jobs(user_id=str(user_message.user_id))
                         if not all_jobs:
-                            response = (
-                                "Looks like you don't have any job applications yet, so there's nothing to update. "
-                                "Want to add your first one? ✨"
+                            response = await self.openai_service.generate_dynamic_response(
+                                "no_jobs_found",
+                                {
+                                    "action_attempted": "bulk status update",
+                                    "suggested_action": "add first job"
+                                },
+                                user_message.message,
+                                recent_context
                             )
                             agent_response = AgentResponse(
                                 response=response,
@@ -295,9 +365,15 @@ class AgentService:
                                     await self.supabase_service.update_conversation_metadata(conversation_id, meta0)
                             except Exception:
                                 pass
-                            response = (
-                                f"I found {len(all_jobs)} application(s). Do you want me to set them all to '"
-                                f"{new_status.value}'? Reply 'yes all' to confirm or 'cancel'."
+                            response = await self.openai_service.generate_dynamic_response(
+                                "bulk_confirmation",
+                                {
+                                    "job_count": len(all_jobs),
+                                    "new_status": new_status.value,
+                                    "jobs": [{"title": j.get("job_title"), "company": j.get("company_name")} for j in all_jobs[:3]]
+                                },
+                                user_message.message,
+                                recent_context
                             )
                             agent_response = AgentResponse(
                                 response=response,
@@ -381,6 +457,8 @@ class AgentService:
                                         job_title=updated['job_title'],
                                         company_name=updated['company_name'],
                                         status=updated['status'],
+                                        user_message=user_message.message,
+                                        conversation_context=recent_context,
                                     )
                                     agent_response = AgentResponse(
                                         response=response,
@@ -401,15 +479,29 @@ class AgentService:
                         job_title=extraction.job_title,
                     )
                     if not matches:
-                        # Offer to create a new job record if they intended a new one
+                        # Be more specific about what we searched for and offer clear options
                         detail_bits = []
                         if extraction.job_title:
                             detail_bits.append(f"'{extraction.job_title}'")
                         if extraction.company_name:
                             detail_bits.append(f"at {extraction.company_name}")
-                        detail = " ".join(detail_bits) if detail_bits else "the specified job"
-                        response = (
-                            f"I couldn't find {detail} in your list. Do you want to add it first, or specify a different job?"
+                        detail = " ".join(detail_bits) if detail_bits else "that job"
+                        
+                        # Get all user jobs to show what they do have
+                        all_user_jobs = await self.supabase_service.get_user_jobs(user_id=str(user_message.user_id), limit=5)
+                        
+                        response = await self.openai_service.generate_dynamic_response(
+                            "job_not_found_with_clarification",
+                            {
+                                "job_title": extraction.job_title,
+                                "company_name": extraction.company_name,
+                                "searched_for": detail,
+                                "action_attempted": "status update",
+                                "available_jobs": [{"title": j.get("job_title"), "company": j.get("company_name"), "status": j.get("status")} for j in all_user_jobs],
+                                "user_message": user_message.message
+                            },
+                            user_message.message,
+                            recent_context
                         )
                         agent_response = AgentResponse(
                             response=response,
@@ -417,8 +509,8 @@ class AgentService:
                             intent=intent,
                             confidence=confidence,
                             requires_clarification=True,
-                            clarification_prompt="Provide: job_title and company_name to add, or clarify which existing job to update",
-                            suggested_actions=["Add new job", "Search jobs"],
+                            clarification_prompt=f"We searched for {detail} but couldn't find it. Please specify which job to update or if I should add it as new.",
+                            suggested_actions=["Specify job to update", "Add as new job", "Show all jobs"],
                             conversation_id=conversation_id,
                         )
                     elif len(matches) == 1:
@@ -429,6 +521,8 @@ class AgentService:
                                 job_title=updated['job_title'],
                                 company_name=updated['company_name'],
                                 status=updated['status'],
+                                user_message=user_message.message,
+                                conversation_context=recent_context,
                             )
                             agent_response = AgentResponse(
                                 response=response,
@@ -440,9 +534,15 @@ class AgentService:
                                 conversation_id=conversation_id,
                             )
                         else:
-                            response = await self.openai_service.generate_friendly_error(
-                                error_type="job_update_failed",
-                                context={"job_title": job.get("job_title"), "company_name": job.get("company_name")}
+                            response = await self.openai_service.generate_dynamic_response(
+                                "job_update_failed",
+                                {
+                                    "job_title": job.get("job_title"),
+                                    "company_name": job.get("company_name"),
+                                    "action": "status update"
+                                },
+                                user_message.message,
+                                recent_context
                             )
                             agent_response = AgentResponse(
                                 response=response,
@@ -453,46 +553,199 @@ class AgentService:
                                 conversation_id=conversation_id,
                             )
                     else:
-                        # Multiple matches; ask user to choose without exposing IDs
-                        listing = "\n".join([
-                            f"{i+1}. {j['job_title']} at {j['company_name']}" for i, j in enumerate(matches)
-                        ])
-                        response = (
-                            "I found multiple matching jobs. Which one do you mean?\n" + listing +
-                            "\nReply with the number (e.g., 1 or 2). You’ve got this ✨"
+                        # Smart logic: if user mentioned specific company and all matches are from that company, 
+                        # update the most recent one automatically
+                        companies = set(match.get("company_name", "").lower() for match in matches)
+                        user_mentioned_company = extraction.company_name and extraction.company_name.lower() in user_message.message.lower()
+                        
+                        if len(companies) == 1 and user_mentioned_company:
+                            # All matches are from the same company the user mentioned - update the most recent one
+                            most_recent_job = matches[0]  # Already sorted by date_added DESC
+                            
+                            # Notify user about what we're about to do
+                            job_description = f"{most_recent_job['job_title']} at {most_recent_job['company_name']}"
+                            logger.info(f"Auto-updating {job_description} to {new_status.value} for user {user_message.user_id}")
+                            
+                            updated = await self.supabase_service.update_job_status(
+                                job_id=most_recent_job["id"],
+                                status=new_status,
+                                user_id=str(user_message.user_id),
+                            )
+                            if updated:
+                                # Generate response that acknowledges the update
+                                response = await self.openai_service.generate_dynamic_response(
+                                    "status_updated_with_confirmation",
+                                    {
+                                        "job_title": updated['job_title'],
+                                        "company_name": updated['company_name'],
+                                        "old_status": most_recent_job.get('status', 'unknown'),
+                                        "new_status": updated['status'],
+                                        "action": "automatically updated your most recent application",
+                                        "user_tone": user_message.message
+                                    },
+                                    user_message.message,
+                                    recent_context
+                                )
+                                agent_response = AgentResponse(
+                                    response=response,
+                                    action_taken="status_updated",
+                                    intent=intent,
+                                    confidence=confidence,
+                                    job_id=updated.get("id"),
+                                    suggested_actions=["View all jobs", "Add notes"],
+                                    conversation_id=conversation_id,
+                                )
+                            else:
+                                response = await self.openai_service.generate_dynamic_response(
+                                    "job_update_failed",
+                                    {
+                                        "job_title": most_recent_job.get("job_title"),
+                                        "company_name": most_recent_job.get("company_name"),
+                                        "action": "status update"
+                                    },
+                                    user_message.message,
+                                    recent_context
+                                )
+                                agent_response = AgentResponse(
+                                    response=response,
+                                    action_taken="error",
+                                    intent=intent,
+                                    confidence=confidence,
+                                    suggested_actions=["Try again", "View all jobs"],
+                                    conversation_id=conversation_id,
+                                )
+                        else:
+                            # Use smarter clarification that analyzes context
+                            response = await self.openai_service.generate_smart_job_clarification(
+                                user_message.message, 
+                                matches, 
+                                recent_context
+                            )
+                            # Persist a pending selection map in conversation metadata
+                            try:
+                                if conversation_id:
+                                    metadata = await self.supabase_service.get_conversation_metadata(conversation_id) or {}
+                                    metadata["pending_job_selection"] = {
+                                        "type": "status_update",
+                                        "candidates": [
+                                            {"index": i+1, "id": j["id"], "job_title": j["job_title"], "company_name": j["company_name"]}
+                                            for i, j in enumerate(matches)
+                                        ],
+                                        "new_status": new_status.value if new_status else None,
+                                    }
+                                    await self.supabase_service.update_conversation_metadata(conversation_id, metadata)
+                            except Exception as e:
+                                logger.warning(f"Failed to persist pending_job_selection: {e}")
+                            agent_response = AgentResponse(
+                                response=response,
+                                action_taken="clarification_needed",
+                                intent=intent,
+                                confidence=confidence,
+                                requires_clarification=True,
+                                clarification_prompt="Reply with the number",
+                                suggested_actions=["List jobs", "Filter by company"],
+                                conversation_id=conversation_id,
+                            )
+            elif intent == IntentType.JOB_DELETE:
+                # Handle job deletion requests
+                extraction = await self.openai_service.extract_job_details(user_message.message)
+                
+                # Check if they want to delete by status (e.g., "delete my rejected jobs")
+                if extraction.status:
+                    status_to_delete = extraction.status.value
+                    jobs_to_delete = await self.supabase_service.search_jobs(
+                        user_id=str(user_message.user_id),
+                        status_filter=status_to_delete
+                    )
+                    
+                    if not jobs_to_delete:
+                        response = await self.openai_service.generate_dynamic_response(
+                            "no_jobs_to_delete",
+                            {
+                                "status_filter": status_to_delete,
+                                "action": "delete jobs by status"
+                            },
+                            user_message.message,
+                            recent_context
                         )
-                        # Persist a pending selection map in conversation metadata
+                        agent_response = AgentResponse(
+                            response=response,
+                            action_taken="information_provided",
+                            intent=intent,
+                            confidence=confidence,
+                            conversation_id=conversation_id,
+                        )
+                    else:
+                        # Ask for confirmation before deleting
+                        job_list = "\n".join([f"• {j['job_title']} at {j['company_name']}" for j in jobs_to_delete])
+                        response = await self.openai_service.generate_dynamic_response(
+                            "delete_confirmation",
+                            {
+                                "jobs_to_delete": jobs_to_delete,
+                                "job_count": len(jobs_to_delete),
+                                "status_filter": status_to_delete,
+                                "job_list": job_list
+                            },
+                            user_message.message,
+                            recent_context
+                        )
+                        
+                        # Store pending deletion in metadata
                         try:
                             if conversation_id:
                                 metadata = await self.supabase_service.get_conversation_metadata(conversation_id) or {}
-                                metadata["pending_job_selection"] = {
-                                    "type": "status_update",
-                                    "candidates": [
-                                        {"index": i+1, "id": j["id"], "job_title": j["job_title"], "company_name": j["company_name"]}
-                                        for i, j in enumerate(matches)
-                                    ],
-                                    "new_status": new_status.value if new_status else None,
+                                metadata["pending_deletion"] = {
+                                    "type": "by_status",
+                                    "status": status_to_delete,
+                                    "job_ids": [j["id"] for j in jobs_to_delete],
+                                    "job_titles": [f"{j['job_title']} at {j['company_name']}" for j in jobs_to_delete]
                                 }
                                 await self.supabase_service.update_conversation_metadata(conversation_id, metadata)
                         except Exception as e:
-                            logger.warning(f"Failed to persist pending_job_selection: {e}")
+                            logger.warning(f"Failed to store pending deletion: {e}")
+                        
                         agent_response = AgentResponse(
                             response=response,
                             action_taken="clarification_needed",
                             intent=intent,
                             confidence=confidence,
                             requires_clarification=True,
-                            clarification_prompt="Reply with the number",
-                            suggested_actions=["List jobs", "Filter by company"],
+                            clarification_prompt="Reply 'yes' to confirm deletion or 'cancel' to keep them",
+                            suggested_actions=["Confirm deletion", "Cancel", "Show jobs first"],
                             conversation_id=conversation_id,
                         )
+                else:
+                    # Generic deletion request - ask for clarification
+                    response = await self.openai_service.generate_dynamic_response(
+                        "delete_clarification_needed",
+                        {
+                            "user_request": user_message.message
+                        },
+                        user_message.message,
+                        recent_context
+                    )
+                    agent_response = AgentResponse(
+                        response=response,
+                        action_taken="clarification_needed",
+                        intent=intent,
+                        confidence=confidence,
+                        requires_clarification=True,
+                        clarification_prompt="Specify which jobs to delete (e.g., 'rejected jobs', 'Google applications')",
+                        suggested_actions=["Delete by status", "Delete by company", "Show all jobs"],
+                        conversation_id=conversation_id,
+                    )
             elif intent == IntentType.JOB_SEARCH:
                 # Special command-like intents: "withdraw all jobs" / "update all ..." should not be treated as search
                 lower_msg = user_message.message.lower()
                 if any(kw in lower_msg for kw in ["withdraw all", "reject all", "update all", "set all to"]):
-                    response = await self.openai_service.generate_friendly_error(
-                        error_type="bulk_updates_unsupported",
-                        context={"suggestion": "withdraw <title> at <company> or list jobs to pick"}
+                    response = await self.openai_service.generate_dynamic_response(
+                        "bulk_updates_unsupported",
+                        {
+                            "user_intent": lower_msg,
+                            "suggestion": "be more specific about which job"
+                        },
+                        user_message.message,
+                        recent_context
                     )
                     agent_response = AgentResponse(
                         response=response,
@@ -516,9 +769,17 @@ class AgentService:
                         jobs = await self.supabase_service.get_user_jobs(user_id=str(user_message.user_id), limit=3)
 
                     if not jobs:
-                        response = await self.openai_service.generate_friendly_error(
-                            error_type="no_jobs_found",
-                            context={"action": "search"}
+                        response = await self.openai_service.generate_dynamic_response(
+                            "no_jobs_found",
+                            {
+                                "action_attempted": "job search",
+                                "search_filters": {
+                                    "company": extraction.company_name,
+                                    "title": extraction.job_title
+                                }
+                            },
+                            user_message.message,
+                            recent_context
                         )
                     else:
                         friendly_jobs = [
@@ -531,8 +792,16 @@ class AgentService:
                             for j in jobs[:10]
                         ]
                         if extraction.company_name or extraction.job_title:
-                            header = "Here are the matching jobs:"
-                            tip = "Tip: include more of the title or the exact company to narrow further."
+                            # Create a personalized header for filtered results
+                            if extraction.company_name and extraction.job_title:
+                                header = f"Here are your {extraction.job_title} positions at {extraction.company_name}:"
+                            elif extraction.company_name:
+                                header = f"Here are your applications at {extraction.company_name}:"
+                            elif extraction.job_title:
+                                header = f"Here are your {extraction.job_title} applications:"
+                            else:
+                                header = "Here are the matching jobs:"
+                            tip = "Want to see all your jobs? Just ask 'show all my jobs'"
                         else:
                             header = "Here are your last 3 applications:"
                             tip = None
@@ -540,6 +809,8 @@ class AgentService:
                             jobs=friendly_jobs,
                             header=header,
                             footer_tip=tip,
+                            user_message=user_message.message,
+                            conversation_context=recent_context,
                         )
 
                     agent_response = AgentResponse(
@@ -570,6 +841,8 @@ class AgentService:
                                 job_title=updated['job_title'],
                                 company_name=updated['company_name'],
                                 status=updated['status'],
+                                user_message=user_message.message,
+                                conversation_context=recent_context,
                             )
                             agent_response = AgentResponse(
                                 response=response,
@@ -704,6 +977,7 @@ class AgentService:
                         metadata = None
                     pending = (metadata or {}).get("pending_new_job") if metadata else None
                     pending_bulk = (metadata or {}).get("pending_bulk_update") if metadata else None
+                    pending_deletion = (metadata or {}).get("pending_deletion") if metadata else None
 
                     # Handle bulk confirmation
                     if is_bulk_confirmation and pending_bulk and pending_bulk.get("status"):
@@ -748,6 +1022,59 @@ class AgentService:
                                 confidence=max(confidence, 0.9),
                                 conversation_id=conversation_id,
                             )
+                    elif is_confirmation and pending_deletion:
+                        # Handle deletion confirmation
+                        if pending_deletion.get("type") == "by_status":
+                            status_filter = pending_deletion.get("status")
+                            count_deleted, deleted_titles = await self.supabase_service.delete_jobs_by_status(
+                                user_id=str(user_message.user_id),
+                                status=status_filter
+                            )
+                            
+                            # Clear pending deletion
+                            try:
+                                metadata["pending_deletion"] = None
+                                await self.supabase_service.update_conversation_metadata(conversation_id, metadata)
+                            except Exception:
+                                pass
+                            
+                            if count_deleted > 0:
+                                response = await self.openai_service.generate_dynamic_response(
+                                    "deletion_completed",
+                                    {
+                                        "count_deleted": count_deleted,
+                                        "status_filter": status_filter,
+                                        "deleted_jobs": deleted_titles,
+                                        "action": "bulk deletion by status"
+                                    },
+                                    user_message.message,
+                                    recent_context
+                                )
+                                agent_response = AgentResponse(
+                                    response=response,
+                                    action_taken="jobs_deleted",
+                                    intent=IntentType.JOB_DELETE,
+                                    confidence=max(confidence, 0.9),
+                                    conversation_id=conversation_id,
+                                    suggested_actions=["Show remaining jobs", "Add new job"],
+                                )
+                            else:
+                                response = await self.openai_service.generate_dynamic_response(
+                                    "deletion_failed",
+                                    {
+                                        "status_filter": status_filter,
+                                        "reason": "no jobs found or deletion failed"
+                                    },
+                                    user_message.message,
+                                    recent_context
+                                )
+                                agent_response = AgentResponse(
+                                    response=response,
+                                    action_taken="error",
+                                    intent=IntentType.JOB_DELETE,
+                                    confidence=confidence,
+                                    conversation_id=conversation_id,
+                                )
                     elif is_confirmation and pending and (pending.get("job_title") and pending.get("company_name")):
                         try:
                             job_data = JobCreate(
@@ -767,7 +1094,9 @@ class AgentService:
                                     job_title=job_data.job_title,
                                     company_name=job_data.company_name,
                                     status=job_data.status.value,
-                                    job_link=job_data.job_link
+                                    job_link=job_data.job_link,
+                                    conversation_context=recent_context,
+                                    user_message=user_message.message
                                 )
                                 agent_response = AgentResponse(
                                     response=response,
@@ -779,9 +1108,15 @@ class AgentService:
                                     conversation_id=conversation_id,
                                 )
                             else:
-                                response = await self.openai_service.generate_friendly_error(
-                                    error_type="job_creation_failed",
-                                    context={"job_title": pending.get("job_title"), "company_name": pending.get("company_name")}
+                                response = await self.openai_service.generate_dynamic_response(
+                                    "job_creation_failed",
+                                    {
+                                        "job_title": pending.get("job_title"),
+                                        "company_name": pending.get("company_name"),
+                                        "action": "creating job from confirmation"
+                                    },
+                                    user_message.message,
+                                    recent_context
                                 )
                                 agent_response = AgentResponse(
                                     response=response,
@@ -792,9 +1127,14 @@ class AgentService:
                                 )
                         except Exception as e:
                             logger.error(f"Failed to create job from pending context: {e}")
-                            response = await self.openai_service.generate_friendly_error(
-                                error_type="job_creation_failed",
-                                context={"error": str(e)}
+                            response = await self.openai_service.generate_dynamic_response(
+                                "job_creation_failed",
+                                {
+                                    "error_details": "system error during creation",
+                                    "action": "creating job from pending context"
+                                },
+                                user_message.message,
+                                recent_context
                             )
                             agent_response = AgentResponse(
                                 response=response,
@@ -818,7 +1158,7 @@ class AgentService:
                     try:
                         response = await self.openai_service.generate_friendly_fallback(intent)
                     except Exception:
-                        response = self._friendly_fallback_response(intent)
+                        response = await self._friendly_fallback_response(intent, user_message.message, recent_context)
                 # For generic LLM responses, do not infer actions from text. Keep it informational.
                 action_taken = "information_provided"
                 agent_response = AgentResponse(
@@ -898,6 +1238,10 @@ class AgentService:
                     if company and not extraction.company_name:
                         extraction.company_name = company
                         logger.info(f"Extracted company from LinkedIn: {company}")
+                    
+                    # Store the URL as job_link if not already set
+                    if not extraction.job_link:
+                        extraction.job_link = linkedin_url
             
             # General fallback for any job link
             if not extraction.job_title:
@@ -910,6 +1254,60 @@ class AgentService:
             # Set default status if not provided
             if not extraction.status:
                 extraction.status = JobStatus.APPLIED
+            
+            # Get conversation history to provide context
+            conversation_history = []
+            conversation_id = user_message.conversation_id
+            if conversation_id:
+                try:
+                    # Get the last few messages for context
+                    messages = await self.supabase_service.get_conversation_messages(conversation_id, limit=5)
+                    if messages:
+                        conversation_history = [
+                            {"role": "user" if msg.get("is_user") else "assistant", "content": msg.get("content", "")}
+                            for msg in messages
+                        ]
+                except Exception as e:
+                    logger.warning(f"Failed to get conversation history: {e}")
+            
+            # Use OpenAI to check for field completeness using conversation context
+            extraction_dict = {
+                "job_title": extraction.job_title,
+                "company_name": extraction.company_name,
+                "job_link": extraction.job_link or urls[0],
+                "job_description": extraction.job_description,
+                "status": extraction.status.value if extraction.status else JobStatus.APPLIED.value
+            }
+            
+            # Check if we can infer missing fields from context
+            completeness_check = await self.openai_service.check_job_details_completeness(
+                extraction=extraction_dict,
+                conversation_history=conversation_history,
+                job_link=urls[0]
+            )
+            
+            # Update extraction with any fields inferred from context
+            complete_fields = completeness_check.get("complete_fields", {})
+            if complete_fields:
+                if complete_fields.get("job_title") and not extraction.job_title:
+                    extraction.job_title = complete_fields["job_title"]
+                    logger.info(f"Inferred job title from context: {extraction.job_title}")
+                
+                if complete_fields.get("company_name") and not extraction.company_name:
+                    extraction.company_name = complete_fields["company_name"]
+                    logger.info(f"Inferred company name from context: {extraction.company_name}")
+                
+                if complete_fields.get("job_description") and not extraction.job_description:
+                    extraction.job_description = complete_fields["job_description"]
+            
+            # Get missing fields from the completeness check
+            missing = completeness_check.get("missing_fields", [])
+            if not missing:
+                # Double-check required fields
+                if not extraction.job_title:
+                    missing.append("job_title")
+                if not extraction.company_name:
+                    missing.append("company_name")
 
             # If we have both required fields, auto-create
             if extraction.job_title and extraction.company_name:
@@ -939,12 +1337,7 @@ class AgentService:
                         suggested_actions=["Update status", "View all jobs", "Add notes"],
                     )
 
-            # Otherwise, ask minimally for missing fields
-            missing = []
-            if not extraction.job_title:
-                missing.append("job_title")
-            if not extraction.company_name:
-                missing.append("company_name")
+            # Otherwise, prepare details for response
             details = []
             details.append(f"Link: {urls[0]}")
             if extraction.company_name:
@@ -953,17 +1346,52 @@ class AgentService:
                 details.append(f"Job Title: {extraction.job_title}")
             status_val = (extraction.status or JobStatus.APPLIED).value
             details.append(f"Status: {status_val}")
+            
+            # Save pending job info to conversation metadata
+            try:
+                if conversation_id:
+                    meta = await self.supabase_service.get_conversation_metadata(conversation_id) or {}
+                    meta["pending_new_job"] = {
+                        "job_title": extraction.job_title,
+                        "company_name": extraction.company_name,
+                        "job_link": urls[0],
+                        "job_description": extraction.job_description,
+                        "status": status_val
+                    }
+                    await self.supabase_service.update_conversation_metadata(conversation_id, meta)
+            except Exception as e:
+                logger.warning(f"Failed to save pending job info: {e}")
 
-            return AgentResponse(
-                response=("I found a job link! 🎯\n" + "\n".join(details) + ("\n\n" if missing else "") +
-                          (f"Please provide the missing required field(s): {', '.join(missing)}." if missing else "")),
-                action_taken="job_link_found" if missing else "job_created",
-                intent=IntentType.NEW_JOB,
-                confidence=0.9,
-                requires_clarification=bool(missing),
-                clarification_prompt=(f"Provide: {', '.join(missing)}" if missing else None),
-                suggested_actions=["Add job details", "Set status", "Skip for now"] if missing else ["Update status", "View all jobs"],
-            )
+            # Generate a friendly response asking for missing fields
+            if missing:
+                friendly_prompt = await self.openai_service.generate_friendly_missing_fields(
+                    known_fields={
+                        "job_title": extraction.job_title,
+                        "company_name": extraction.company_name,
+                        "job_link": urls[0],
+                        "status": status_val,
+                    },
+                    missing_fields=missing,
+                )
+                
+                return AgentResponse(
+                    response=friendly_prompt,
+                    action_taken="job_link_found",
+                    intent=IntentType.NEW_JOB,
+                    confidence=0.9,
+                    requires_clarification=True,
+                    clarification_prompt=f"Provide: {', '.join(missing)}",
+                    suggested_actions=["Add job details", "Set status", "Skip for now"],
+                )
+            else:
+                return AgentResponse(
+                    response=("I found a job link! 🎯\n" + "\n".join(details)),
+                    action_taken="job_link_found",
+                    intent=IntentType.NEW_JOB,
+                    confidence=0.9,
+                    requires_clarification=False,
+                    suggested_actions=["Update status", "View all jobs"],
+                )
             
         except Exception as e:
             logger.error(f"Error handling job link: {str(e)}")
@@ -994,6 +1422,14 @@ class AgentService:
     def _classify_intent_simple(self, message: str) -> tuple[IntentType, float]:
         """Simple rule-based intent classification"""
         message_lower = message.lower()
+        
+        # Check for deletion indicators
+        if any(phrase in message_lower for phrase in [
+            "delete", "remove", "clear", "get rid of", "clean up"
+        ]) and any(phrase in message_lower for phrase in [
+            "job", "application", "rejected", "offer"
+        ]):
+            return IntentType.JOB_DELETE, 0.9
         
         # Check for new job indicators
         if any(phrase in message_lower for phrase in [
@@ -1055,15 +1491,23 @@ class AgentService:
         else:
             return ["Add new job", "Update status", "Search jobs"]
 
-    def _friendly_fallback_response(self, intent: IntentType) -> str:
-        """Return a friendly, supportive fallback message when no response was generated."""
-        if intent == IntentType.JOB_SEARCH:
-            return "I couldn’t find any applications to show yet. Want to add your first one? You’ve got this ✨"
-        if intent == IntentType.STATUS_UPDATE:
-            return "Tell me which job to update and the new status (applied/interview/offer/rejected/withdrawn). I’m here to help ✨"
-        if intent == IntentType.NEW_JOB:
-            return "Let’s add it! Share the job title and company (a link helps too). We’ll set status to ‘applied’ by default ✨"
-        return "I didn’t quite catch that. Try ‘show my jobs’ or ‘add <title> at <company>’. You’ve got this ✨"
+    async def _friendly_fallback_response(self, intent: IntentType, user_message: str = "", context: str = "") -> str:
+        """Return a dynamically generated, friendly, supportive fallback message."""
+        try:
+            return await self.openai_service.generate_dynamic_response(
+                "fallback_response",
+                {
+                    "intent": intent.value,
+                    "user_message": user_message,
+                    "context": context
+                },
+                user_message,
+                context
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate dynamic fallback: {e}")
+            # Emergency hard fallback only if OpenAI completely fails
+            return await self.openai_service.generate_dynamic_fallback("emergency_fallback", {"intent": intent.value})
 
     def _extract_selection_index(self, message: str) -> Optional[int]:
         """Extract a selection index from text like '2', '2nd one', 'the 1st', etc."""
@@ -1212,11 +1656,33 @@ class AgentService:
                 )
                 created = await self.supabase_service.create_job(job_data, str(user_message.user_id))
                 if created:
+                    # Get conversation context for personalized response
+                    conversation_id = getattr(user_message, 'conversation_id', None)
+                    recent_context = ""
+                    if conversation_id:
+                        try:
+                            recent_msgs = await self.supabase_service.get_recent_messages(conversation_id, limit=5)
+                            if recent_msgs:
+                                formatted = []
+                                for m in recent_msgs:
+                                    prefix = "User" if m.get("role") == "user" else "Assistant"
+                                    formatted.append(f"{prefix}: {m.get('content','')}")
+                                recent_context = "\n".join(formatted)
+                        except Exception:
+                            pass
+                    
+                    # Generate dynamic, personalized job creation response
+                    response = await self.openai_service.generate_friendly_job_created(
+                        job_title=job_data.job_title,
+                        company_name=job_data.company_name,
+                        status=job_data.status.value,
+                        job_link=job_data.job_link,
+                        conversation_context=recent_context,
+                        user_message=user_message.message
+                    )
+                    
                     return AgentResponse(
-                        response=(
-                            f"Added '{job_data.job_title}' at {job_data.company_name} with status '{job_data.status.value}'." +
-                            (f"\nLink: {job_data.job_link}" if job_data.job_link else "")
-                        ),
+                        response=response,
                         action_taken="job_created",
                         intent=IntentType.NEW_JOB,
                         confidence=0.95,

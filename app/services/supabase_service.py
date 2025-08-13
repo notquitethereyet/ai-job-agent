@@ -516,8 +516,59 @@ class SupabaseService:
             logger.error(f"Error retrieving job: {str(e)}")
             return None
     
-    async def search_jobs(self, user_id: str, company_name: Optional[str] = None, job_title: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Search jobs by company name or job title."""
+    async def delete_job(self, job_id: str, user_id: str) -> bool:
+        """Delete a specific job by ID"""
+        try:
+            if not self.use_direct_connection:
+                result = self.client.table("jobs").delete().eq("id", job_id).eq("user_id", user_id).execute()
+                return bool(result.data)
+            else:
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "DELETE FROM jobs WHERE id = %s::uuid AND user_id = %s::uuid",
+                            (job_id, user_id)
+                        )
+                        return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting job {job_id}: {str(e)}")
+            return False
+    
+    async def delete_jobs_by_status(self, user_id: str, status: str) -> tuple[int, list[str]]:
+        """Delete all jobs with a specific status for a user.
+        Returns: (count_deleted, list_of_deleted_job_titles)
+        """
+        try:
+            # First get the jobs to be deleted for confirmation
+            jobs_to_delete = await self.search_jobs(user_id=user_id, status_filter=status)
+            if not jobs_to_delete:
+                return 0, []
+            
+            job_titles = [f"{j['job_title']} at {j['company_name']}" for j in jobs_to_delete]
+            job_ids = [j['id'] for j in jobs_to_delete]
+            
+            if not self.use_direct_connection:
+                # Delete in Supabase
+                for job_id in job_ids:
+                    result = self.client.table("jobs").delete().eq("id", job_id).eq("user_id", user_id).execute()
+                return len(job_ids), job_titles
+            else:
+                # Delete via direct connection
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "DELETE FROM jobs WHERE user_id = %s::uuid AND status = %s",
+                            (user_id, status)
+                        )
+                        return cur.rowcount, job_titles
+                        
+        except Exception as e:
+            logger.error(f"Error deleting jobs with status {status}: {str(e)}")
+            return 0, []
+    
+    async def search_jobs(self, user_id: str, company_name: Optional[str] = None, job_title: Optional[str] = None, 
+                         status_filter: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Search jobs by company name, job title, or status."""
         try:
             if not self.use_direct_connection:
                 query = self.client.table("jobs").select("*").eq("user_id", user_id)
@@ -525,6 +576,8 @@ class SupabaseService:
                     query = query.ilike("company_name", f"%{company_name}%")
                 if job_title:
                     query = query.ilike("job_title", f"%{job_title}%")
+                if status_filter:
+                    query = query.eq("status", status_filter)
                 query = query.order("date_added", desc=True)
                 if limit:
                     query = query.limit(limit)
@@ -546,6 +599,9 @@ class SupabaseService:
                         if job_title:
                             where_clauses.append("job_title ILIKE %s")
                             params.append(f"%{job_title}%")
+                        if status_filter:
+                            where_clauses.append("status = %s")
+                            params.append(status_filter)
                         sql = (
                             "SELECT id, user_id, job_title, company_name, job_link, job_description, status, date_added, last_updated "
                             "FROM jobs WHERE " + " AND ".join(where_clauses) + " ORDER BY date_added DESC"

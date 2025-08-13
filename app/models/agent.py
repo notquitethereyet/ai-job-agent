@@ -15,6 +15,7 @@ class IntentType(str, Enum):
     NEW_JOB = "new_job"
     STATUS_UPDATE = "status_update"
     JOB_SEARCH = "job_search"
+    JOB_DELETE = "job_delete"
     AMBIGUOUS = "ambiguous"
     UNKNOWN = "unknown"
 
