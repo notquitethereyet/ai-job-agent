@@ -4,8 +4,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    UV_SYSTEM_PYTHON=1
+    PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -14,14 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
-
-# Install dependencies using uv 
-RUN uv sync --frozen --no-dev
+# Python deps using pip (more reliable for Railway)
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # App code
 COPY . /app
@@ -29,7 +23,7 @@ COPY . /app
 # Environment (Railway provides PORT)
 ENV HOST=0.0.0.0
 
-# Run using uv run to activate the virtual environment
-CMD ["sh", "-c", "uv run uvicorn app.main:app --host $HOST --port ${PORT:-8000}"]
+# Run directly with uvicorn
+CMD ["sh", "-c", "uvicorn app.main:app --host $HOST --port ${PORT:-8000}"]
 
 
