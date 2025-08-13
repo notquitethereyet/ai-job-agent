@@ -71,6 +71,7 @@ async def process_message(user_message: UserMessage):
         logger.error(f"Error processing message: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 # Jobs endpoints
 @app.get("/jobs")
 async def get_jobs(user_id: str, status: str = None):

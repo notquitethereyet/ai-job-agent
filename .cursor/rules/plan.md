@@ -39,6 +39,9 @@
 - [x] Implement ambiguity resolution prompts
   - Notes: Prompts now only ask for truly missing required fields; status defaults to `applied` when user says "applied" or shares a link.
 
+## Integrations
+- [ ] WhatsApp via Make.com (Make handles user creation; backend consumes `/agent/message`)
+
 ## Database Operations
 - [x] Set up Supabase tables and relationships
 - [x] Implement job insertion logic
@@ -75,14 +78,14 @@
 - [x] Update README.md with project details
 
 ## Deployment Preparation
-- [ ] Create Docker configuration
+- [x] Create Docker configuration
 - [ ] Set up environment-specific configs
 - [ ] Implement health checks
 - [ ] Create deployment scripts
 - [ ] Set up monitoring and logging
 
 ## Future Enhancements (Post-MVP)
-- [ ] WhatsApp integration
+- [ ] WhatsApp integration (advanced features: media, templates, rate limiting)
 - [ ] Resume ATS matching
 - [ ] Company research summaries
 - [ ] Multi-user authentication
@@ -110,3 +113,5 @@
 - ✅ Default status inference: infers `applied` when user says "applied" or provides a job link
 - ✅ LLM-driven small-talk redirects and safety refusals
 - ✅ Outcome-aware confirmations via OpenAI (no hardcoded phrasing)
+- ✅ WhatsApp Make.com webhook added with phone-based user provisioning
+- ✅ Added `users` table and DB helpers (lookup/create)

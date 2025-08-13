@@ -133,6 +133,22 @@ curl -X POST "http://localhost:8000/agent/message" \
 # Returns a concise list of your jobs with status (first 10). Internal IDs are never exposed.
 ```
 
+### WhatsApp via Make.com (Option B)
+
+Your Make.com scenario handles user creation in Supabase. When a user exists, call the agent directly:
+
+```bash
+POST https://<your-host>/agent/message
+Content-Type: application/json
+
+{
+  "message": "show my jobs",
+  "user_id": "<uuid>"
+}
+```
+
+Optional: pass `conversation_id` to thread messages, otherwise the server reuses/creates one.
+
 ### Add New Job
 ```bash
 curl -X POST "http://localhost:8000/jobs" \
@@ -156,7 +172,44 @@ curl -X PATCH "http://localhost:8000/jobs/{job_id}" \
 
 ## 🗄️ Database Schema (so your future self can query stuff)
 
-The application uses a single `jobs` table with the following structure:
+Core tables:
+
+### users
+
+| Column        | Type        | Description                 |
+|---------------|-------------|-----------------------------|
+| id            | uuid (PK)   | App user UUID               |
+| phone_e164    | text UNIQUE | Phone number in E.164       |
+| display_name  | text        | Optional display name       |
+| metadata      | jsonb       | Misc per-user settings/data |
+| created_at    | timestamptz | Row created                 |
+| updated_at    | timestamptz | Row updated                 |
+
+### conversations
+
+| Column           | Type        | Description                     |
+|------------------|-------------|---------------------------------|
+| id               | uuid (PK)   | Conversation id                 |
+| user_id          | uuid        | Owner                           |
+| title            | text        | Optional title                  |
+| metadata         | jsonb       | LLM state (pending selections)  |
+| created_at       | timestamptz | Created                         |
+| updated_at       | timestamptz | Updated                         |
+| last_message_at  | timestamptz | Recency marker                  |
+
+### messages
+
+| Column           | Type        | Description                     |
+|------------------|-------------|---------------------------------|
+| id               | uuid (PK)   | Message id                      |
+| conversation_id  | uuid        | FK to conversations             |
+| user_id          | uuid        | User owner                      |
+| role             | text        | 'user' or 'assistant'           |
+| content          | text        | Plain text                      |
+| tool_calls       | jsonb       | Optional tool/intent metadata   |
+| created_at       | timestamptz | Timestamp                       |
+
+### jobs
 
 | Column           | Type        | Description                                    |
 |------------------|-------------|------------------------------------------------|
@@ -215,6 +268,19 @@ export VERBOSE_LOGGING=true
 ```
 
 ## 🚀 Deployment
+
+### Railway (recommended)
+
+1) Create a new project on Railway and select Deploy from GitHub.
+2) Add environment variables in Railway project settings:
+   - `OPENAI_API_KEY`
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+   - Optional: `LOG_LEVEL=INFO`, `DEBUG=false`
+3) Railway will detect the `Dockerfile` and build automatically.
+4) Once deployed, open the app URL and visit `/docs`.
+
+Health check path: `/health`
 
 ### Docker
 

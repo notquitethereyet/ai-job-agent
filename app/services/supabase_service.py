@@ -44,6 +44,107 @@ class SupabaseService:
             logger.info("Using Supabase client")
 
     # =====================
+    # Users
+    # =====================
+    async def get_user_by_phone(self, phone_e164: str) -> Optional[Dict[str, Any]]:
+        """Fetch a user row by phone in E.164 format."""
+        try:
+            if not self.use_direct_connection:
+                result = (
+                    self.client
+                    .table("users")
+                    .select("id, phone_e164, display_name, metadata, created_at, updated_at")
+                    .eq("phone_e164", phone_e164)
+                    .single()
+                    .execute()
+                )
+                return result.data if result.data else None
+            else:
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute(
+                            """
+                            SELECT id, phone_e164, display_name, metadata, created_at, updated_at
+                            FROM users
+                            WHERE phone_e164 = %s
+                            LIMIT 1
+                            """,
+                            (phone_e164,)
+                        )
+                        row = cur.fetchone()
+                        return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching user by phone: {e}")
+            if not self.use_direct_connection and self.database_url and "Invalid API key" in str(e):
+                self.use_direct_connection = True
+                return await self.get_user_by_phone(phone_e164)
+            return None
+
+    async def create_user(self, *, phone_e164: str, display_name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Create a new user row."""
+        try:
+            if not self.use_direct_connection:
+                payload = {
+                    "phone_e164": phone_e164,
+                    "display_name": display_name,
+                    "metadata": metadata or {},
+                }
+                result = self.client.table("users").insert(payload).execute()
+                return result.data[0] if result.data else None
+            else:
+                with psycopg2.connect(self.database_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO users (phone_e164, display_name, metadata)
+                            VALUES (%s, %s, %s::jsonb)
+                            ON CONFLICT (phone_e164) DO UPDATE SET
+                                display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                                updated_at = NOW()
+                            RETURNING id, phone_e164, display_name, metadata, created_at, updated_at
+                            """,
+                            (phone_e164, display_name, Json(metadata or {}))
+                        )
+                        row = cur.fetchone()
+                        return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            if not self.use_direct_connection and self.database_url and "Invalid API key" in str(e):
+                self.use_direct_connection = True
+                return await self.create_user(phone_e164=phone_e164, display_name=display_name, metadata=metadata)
+            return None
+
+    async def get_or_create_user_by_phone(self, phone_e164: str, *, display_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Idempotently fetch or create a user for this phone number."""
+        user = await self.get_user_by_phone(phone_e164)
+        if user:
+            # Optionally backfill display_name
+            if display_name and not user.get("display_name"):
+                try:
+                    if not self.use_direct_connection:
+                        upd = self.client.table("users").update({"display_name": display_name}).eq("id", user["id"]).execute()
+                        if upd.data:
+                            user = upd.data[0]
+                    else:
+                        with psycopg2.connect(self.database_url) as conn:
+                            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                                cur.execute(
+                                    """
+                                    UPDATE users SET display_name = %s, updated_at = NOW()
+                                    WHERE id = %s::uuid
+                                    RETURNING id, phone_e164, display_name, metadata, created_at, updated_at
+                                    """,
+                                    (display_name, user["id"])
+                                )
+                                row = cur.fetchone()
+                                if row:
+                                    user = dict(row)
+                except Exception:
+                    pass
+            return user
+        return await self.create_user(phone_e164=phone_e164, display_name=display_name)
+
+    # =====================
     # Conversations & Messages (Context Memory)
     # =====================
     async def get_conversation_metadata(self, conversation_id: str) -> Dict[str, Any]:
