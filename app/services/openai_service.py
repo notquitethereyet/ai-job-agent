@@ -915,10 +915,11 @@ class OpenAIService:
                 "no_jobs_to_delete": f"""
                 {base_personality}
                 
-                The user wants to delete jobs by status but no jobs exist with that status.
+                The user wants to delete jobs but no jobs match their criteria.
                 Context: {context}
                 
-                Gently let them know there are no jobs to delete with that status.
+                Gently let them know there are no jobs to delete matching their specified criteria.
+                Be specific about what they're looking for (status, company, etc.)
                 Offer to show what jobs they do have or help with other actions.
                 """,
                 

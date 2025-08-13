@@ -650,20 +650,24 @@ class AgentService:
                 # Handle job deletion requests
                 extraction = await self.openai_service.extract_job_details(user_message.message)
                 
-                # Check if they want to delete by status (e.g., "delete my rejected jobs")
-                if extraction.status:
-                    status_to_delete = extraction.status.value
-                    jobs_to_delete = await self.supabase_service.search_jobs(
-                        user_id=str(user_message.user_id),
-                        status_filter=status_to_delete
-                    )
+                # Check if they want to delete by specific criteria (status, company, or both)
+                if extraction.status or extraction.company_name:
+                    # Build search parameters
+                    search_params = {"user_id": str(user_message.user_id)}
+                    if extraction.status:
+                        search_params["status_filter"] = extraction.status.value
+                    if extraction.company_name:
+                        search_params["company_name"] = extraction.company_name
+                    
+                    jobs_to_delete = await self.supabase_service.search_jobs(**search_params)
                     
                     if not jobs_to_delete:
                         response = await self.openai_service.generate_dynamic_response(
                             "no_jobs_to_delete",
                             {
-                                "status_filter": status_to_delete,
-                                "action": "delete jobs by status"
+                                "status_filter": extraction.status.value if extraction.status else None,
+                                "company_filter": extraction.company_name,
+                                "action": "delete jobs with specified criteria"
                             },
                             user_message.message,
                             recent_context
@@ -683,7 +687,8 @@ class AgentService:
                             {
                                 "jobs_to_delete": jobs_to_delete,
                                 "job_count": len(jobs_to_delete),
-                                "status_filter": status_to_delete,
+                                "status_filter": extraction.status.value if extraction.status else None,
+                                "company_filter": extraction.company_name,
                                 "job_list": job_list
                             },
                             user_message.message,
@@ -695,8 +700,9 @@ class AgentService:
                             if conversation_id:
                                 metadata = await self.supabase_service.get_conversation_metadata(conversation_id) or {}
                                 metadata["pending_deletion"] = {
-                                    "type": "by_status",
-                                    "status": status_to_delete,
+                                    "type": "by_criteria",
+                                    "status": extraction.status.value if extraction.status else None,
+                                    "company": extraction.company_name,
                                     "job_ids": [j["id"] for j in jobs_to_delete],
                                     "job_titles": [f"{j['job_title']} at {j['company_name']}" for j in jobs_to_delete]
                                 }
