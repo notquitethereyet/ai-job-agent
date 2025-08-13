@@ -8,11 +8,11 @@ import re
 import html as html_module
 from typing import Optional
 # from openai_agents import Agent  # Not available, using simpler approach
-from app.models.agent import UserMessage, AgentResponse, IntentType, JobExtraction
-from app.models.job import JobCreate, JobStatus
-from app.services.openai_service import OpenAIService
-from app.services.job_service import JobService
-from app.services.supabase_service import SupabaseService
+from ..models.agent import UserMessage, AgentResponse, IntentType, JobExtraction
+from ..models.job import JobCreate, JobStatus
+from .openai_service import OpenAIService
+from .job_service import JobService
+from .supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
 

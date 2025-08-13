@@ -8,10 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import logging
 from dotenv import load_dotenv
-from app.models.agent import UserMessage, AgentResponse
-from app.services.agent_service import AgentService
-from app.services.supabase_service import SupabaseService
-from app.models.job import JobCreate, JobUpdate, JobStatus
+from .models.agent import UserMessage, AgentResponse
+from .services.agent_service import AgentService
+from .services.supabase_service import SupabaseService
+from .models.job import JobCreate, JobUpdate, JobStatus
 
 # Load environment variables
 load_dotenv()

@@ -79,6 +79,7 @@
 
 ## Deployment Preparation
 - [x] Create Docker configuration
+- [x] Fix package imports for Docker/Railway (use package-relative imports within `app`)
 - [ ] Set up environment-specific configs
 - [ ] Implement health checks
 - [ ] Create deployment scripts

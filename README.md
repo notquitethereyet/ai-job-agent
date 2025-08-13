@@ -292,6 +292,18 @@ docker build -t jobtrackai .
 docker run -p 8000:8000 --env-file .env jobtrackai
 ```
 
+### Troubleshooting (Railway/Docker)
+
+- ModuleNotFoundError: No module named 'app.models'
+  - Use package-relative imports inside the `app` package (already applied):
+    - `from .models.agent import UserMessage`
+    - `from .services.agent_service import AgentService`
+  - Ensure `WORKDIR` is `/app` and the image runs `uvicorn app.main:app` (Dockerfile does).
+  - Verify `app/` and subpackages are copied into the image (no `.dockerignore` blocking them).
+- Service initialization fails on startup
+  - Set required env vars in Railway: `OPENAI_API_KEY`, and either `SUPABASE_URL` + `SUPABASE_ANON_KEY` or `DATABASE_URL`.
+  - Health check is available at `/health` even if database isn’t configured; DB operations require the envs.
+
 ### Production Considerations (when you stop running it on your laptop)
 
 - Use production ASGI server (Gunicorn + Uvicorn)
