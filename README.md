@@ -1,8 +1,36 @@
 # JobTrackAI - Your Job Hunt Wingman 🎯
 
 Ever lose track of where you applied? Yeah, me too. So I built this thing.
-
 ![JobTrackAI Screenshot](./jobtrack.png)
+
+## **LITE version**
+
+> **Made this thing 80% faster and way cheaper to run**  
+> Peep the optimized version: **[`lite` branch](https://github.com/notquitethereyet/ai-job-agent/tree/lite)**
+
+**What's actually different:**
+- **🧠 Smarter AI**: It doesn't call OpenAI for every thing (saves mad money)
+- **🚀 Way faster**: Responds in like 1-2 seconds instead
+- **🔄 Handles multiple stuff**: Say "rejected from Tesla and xAI" and it updates both
+- **📊 Cleaner code**: More manageable codebase
+- **🛡️ Won't give you generic advice**: Stays focused on your job tracker
+
+**Which one should you use?** If you want it fast and cheap, go with `lite`.
+
+### 📊 **Which one's better tho?**
+
+| What | Main (OG version) | Lite (The fast one) |
+|------|-------------------|---------------------|
+| **Speed** | Takes like 5-7 seconds | 1-2 seconds (fast af) |
+| **OpenAI costs** | Expensive (uses lots of tokens) | Way cheaper (80% less)  |
+| **How many times it calls OpenAI** | ~10 times per message (yikes) | 1-2 times (smart) |
+| **Code messiness** | 1,696 lines | 532 lines (clean) 🧹 |
+| **Understanding you** | Pretty goated | Pretty good |
+| **How it works** | Calls AI for everything | Smart shortcuts + AI when needed  |
+| **Your wallet** | RIP 💸 | Happy wallet |
+
+---
+
 
 ## What it does (the TLDR)
 
