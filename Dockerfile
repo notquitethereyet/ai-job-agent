@@ -18,8 +18,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code directly
-COPY app/ ./app/
-COPY requirements.txt pyproject.toml README.md railway.toml .env.example ./
+COPY . /app/
 
 # Environment (Railway provides PORT)
 ENV HOST=0.0.0.0
