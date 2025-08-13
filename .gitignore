@@ -61,7 +61,8 @@ log/
 *.sqlite3
 
 # AI/ML specific
-models/
+# Exclude standalone models directory but not app/models
+/models/
 *.pkl
 *.joblib
 *.h5
