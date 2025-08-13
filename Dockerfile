@@ -17,8 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# App code - copy everything to maintain proper structure
-COPY . .
+# Copy application code directly
+COPY app/ ./app/
+COPY requirements.txt pyproject.toml README.md railway.toml .env.example ./
 
 # Environment (Railway provides PORT)
 ENV HOST=0.0.0.0
