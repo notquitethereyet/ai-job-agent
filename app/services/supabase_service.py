@@ -618,21 +618,7 @@ class SupabaseService:
             logger.error(f"Error searching jobs: {str(e)}")
             return []
     
-    async def delete_job(self, job_id: str, user_id: str) -> bool:
-        """Delete a job entry"""
-        try:
-            result = self.client.table("jobs").delete().eq("id", job_id).eq("user_id", user_id).execute()
-            
-            if result.data:
-                logger.info(f"Deleted job {job_id}")
-                return True
-            else:
-                logger.error(f"No job found with id {job_id} for user {user_id}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error deleting job: {str(e)}")
-            return False
+
     
     async def get_job_stats(self, user_id: str) -> Dict[str, int]:
         """Get job statistics for a user"""
