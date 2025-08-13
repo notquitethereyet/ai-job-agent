@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# App code
-COPY . /app
+# App code - copy everything to maintain proper structure
+COPY . .
 
 # Environment (Railway provides PORT)
 ENV HOST=0.0.0.0
