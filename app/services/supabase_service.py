@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from supabase import create_client, Client
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
-from ..models.job import JobCreate, JobUpdate, JobStatus
+from app.models.job import JobCreate, JobUpdate, JobStatus
 
 logger = logging.getLogger(__name__)
 

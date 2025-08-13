@@ -9,8 +9,8 @@ import logging
 from typing import Optional, Dict, Any
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
-from ..models.agent import IntentType, JobExtraction
-from ..models.job import JobStatus
+from app.models.agent import IntentType, JobExtraction
+from app.models.job import JobStatus
 
 logger = logging.getLogger(__name__)
 

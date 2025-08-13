@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
-from ..models.job import Job, JobCreate, JobUpdate, JobStatus
+from app.models.job import Job, JobCreate, JobUpdate, JobStatus
 
 logger = logging.getLogger(__name__)
 
